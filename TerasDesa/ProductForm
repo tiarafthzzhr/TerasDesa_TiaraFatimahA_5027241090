@@ -1,0 +1,314 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import axios from 'axios';
+
+const ProductForm = () => {
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    category: 'pertanian',
+    price: '',
+    unit: 'kg',
+    stock: '',
+    desa: '',
+    location: ''
+  });
+  const [images, setImages] = useState([]);
+  const [previews, setPreviews] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const navigate = useNavigate();
+  const { id } = useParams();
+  const isEdit = !!id;
+
+  const API_URL = 'http://localhost:5000/api';
+
+  useEffect(() => {
+    if (isEdit) {
+      fetchProduct();
+    }
+  }, [id]);
+
+  const fetchProduct = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/products/${id}`);
+      const product = res.data.product;
+      
+      setFormData({
+        name: product.name,
+        description: product.description,
+        category: product.category,
+        price: product.price,
+        unit: product.unit,
+        stock: product.stock,
+        desa: product.desa,
+        location: product.location
+      });
+
+      if (product.images && product.images.length > 0) {
+        setPreviews(product.images.map(img => `http://localhost:5000${img}`));
+      }
+    } catch (error) {
+      console.error('Fetch product error:', error);
+      setError('Gagal memuat data produk');
+    }
+  };
+
+  const handleChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  const handleImageChange = (e) => {
+    const files = Array.from(e.target.files);
+    setImages(files);
+
+    const newPreviews = files.map(file => URL.createObjectURL(file));
+    setPreviews(newPreviews);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const formDataToSend = new FormData();
+      
+      // Append form fields
+      Object.keys(formData).forEach(key => {
+        formDataToSend.append(key, formData[key]);
+      });
+
+      // Append images
+      images.forEach(image => {
+        formDataToSend.append('images', image);
+      });
+
+      if (isEdit) {
+        await axios.put(`${API_URL}/products/${id}`, formDataToSend, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+      } else {
+        await axios.post(`${API_URL}/products`, formDataToSend, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+      }
+
+      navigate('/my-products');
+    } catch (error) {
+      setError(error.response?.data?.message || 'Terjadi kesalahan');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto">
+      <div className="bg-white rounded-2xl shadow-xl p-8">
+        <h2 className="text-3xl font-bold text-gray-800 mb-6">
+          {isEdit ? 'Edit Produk' : 'Tambah Produk Baru'}
+        </h2>
+
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Gambar Produk */}
+          <div>
+            <label className="block text-gray-700 font-medium mb-2">
+              Gambar Produk (Max 5 gambar)
+            </label>
+            <input
+              type="file"
+              multiple
+              accept="image/*"
+              onChange={handleImageChange}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+            />
+            {previews.length > 0 && (
+              <div className="grid grid-cols-5 gap-4 mt-4">
+                {previews.map((preview, index) => (
+                  <img
+                    key={index}
+                    src={preview}
+                    alt={`Preview ${index + 1}`}
+                    className="w-full h-24 object-cover rounded-lg"
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Nama Produk */}
+          <div>
+            <label className="block text-gray-700 font-medium mb-2">
+              Nama Produk *
+            </label>
+            <input
+              type="text"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              placeholder="Contoh: Beras Organik Premium"
+              required
+            />
+          </div>
+
+          {/* Deskripsi */}
+          <div>
+            <label className="block text-gray-700 font-medium mb-2">
+              Deskripsi *
+            </label>
+            <textarea
+              name="description"
+              value={formData.description}
+              onChange={handleChange}
+              rows="4"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              placeholder="Jelaskan detail produk Anda..."
+              required
+            />
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Kategori */}
+            <div>
+              <label className="block text-gray-700 font-medium mb-2">
+                Kategori *
+              </label>
+              <select
+                name="category"
+                value={formData.category}
+                onChange={handleChange}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              >
+                <option value="pertanian">Pertanian</option>
+                <option value="peternakan">Peternakan</option>
+                <option value="perikanan">Perikanan</option>
+                <option value="umkm">UMKM</option>
+                <option value="kerajinan">Kerajinan</option>
+              </select>
+            </div>
+
+            {/* Unit */}
+            <div>
+              <label className="block text-gray-700 font-medium mb-2">
+                Satuan *
+              </label>
+              <select
+                name="unit"
+                value={formData.unit}
+                onChange={handleChange}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              >
+                <option value="kg">Kilogram (kg)</option>
+                <option value="ton">Ton</option>
+                <option value="butir">Butir</option>
+                <option value="pack">Pack</option>
+                <option value="liter">Liter</option>
+                <option value="pcs">Pieces (pcs)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Harga */}
+            <div>
+              <label className="block text-gray-700 font-medium mb-2">
+                Harga (Rp) *
+              </label>
+              <input
+                type="number"
+                name="price"
+                value={formData.price}
+                onChange={handleChange}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                placeholder="15000"
+                min="0"
+                required
+              />
+            </div>
+
+            {/* Stok */}
+            <div>
+              <label className="block text-gray-700 font-medium mb-2">
+                Stok *
+              </label>
+              <input
+                type="number"
+                name="stock"
+                value={formData.stock}
+                onChange={handleChange}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                placeholder="100"
+                min="0"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Desa */}
+            <div>
+              <label className="block text-gray-700 font-medium mb-2">
+                Nama Desa *
+              </label>
+              <input
+                type="text"
+                name="desa"
+                value={formData.desa}
+                onChange={handleChange}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                placeholder="Desa Makmur"
+                required
+              />
+            </div>
+
+            {/* Lokasi */}
+            <div>
+              <label className="block text-gray-700 font-medium mb-2">
+                Lokasi (Kab/Kota, Provinsi) *
+              </label>
+              <input
+                type="text"
+                name="location"
+                value={formData.location}
+                onChange={handleChange}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                placeholder="Kab. Bandung, Jawa Barat"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-4">
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 bg-gradient-to-r from-emerald-600 to-green-600 text-white py-3 rounded-lg font-semibold hover:from-emerald-700 hover:to-green-700 transition disabled:opacity-50"
+            >
+              {loading ? 'Loading...' : isEdit ? 'Update Produk' : 'Tambah Produk'}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/my-products')}
+              className="px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition"
+            >
+              Batal
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default ProductForm;

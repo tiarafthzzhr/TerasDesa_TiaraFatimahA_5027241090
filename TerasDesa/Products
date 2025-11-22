@@ -1,0 +1,68 @@
+const mongoose = require('mongoose');
+
+const productSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: [true, 'Nama produk wajib diisi'],
+    trim: true
+  },
+  description: {
+    type: String,
+    required: [true, 'Deskripsi wajib diisi']
+  },
+  category: {
+    type: String,
+    required: [true, 'Kategori wajib diisi'],
+    enum: ['pertanian', 'peternakan', 'perikanan', 'umkm', 'kerajinan']
+  },
+  price: {
+    type: Number,
+    required: [true, 'Harga wajib diisi'],
+    min: 0
+  },
+  unit: {
+    type: String,
+    required: [true, 'Satuan wajib diisi'],
+    enum: ['kg', 'ton', 'butir', 'pack', 'liter', 'pcs']
+  },
+  stock: {
+    type: Number,
+    required: [true, 'Stok wajib diisi'],
+    min: 0,
+    default: 0
+  },
+  images: [{
+    type: String
+  }],
+  desa: {
+    type: String,
+    required: [true, 'Nama desa wajib diisi']
+  },
+  location: {
+    type: String,
+    required: [true, 'Lokasi wajib diisi']
+  },
+  owner: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  rating: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 5
+  },
+  totalReviews: {
+    type: Number,
+    default: 0
+  },
+  isActive: {
+    type: Boolean,
+    default: true
+  }
+}, {
+  timestamps: true
+});
+
+module.exports = mongoose.model('Product', productSchema);

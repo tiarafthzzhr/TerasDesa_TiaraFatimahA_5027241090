@@ -1,0 +1,384 @@
+const express = require('express');
+const router = express.Router();
+const jwt = require('jsonwebtoken');
+const { body, validationResult } = require('express-validator');
+const User = require('../models/User');
+const { protect } = require('../middleware/auth');
+
+// Generate JWT Token
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRE
+  });
+};
+
+// @route   POST /api/auth/register
+// @desc    Register new user
+// @access  Public
+router.post('/register', [
+  body('name').notEmpty().withMessage('Nama wajib diisi'),
+  body('email').isEmail().withMessage('Email tidak valid'),
+  body('password').isLength({ min: 6 }).withMessage('Password minimal 6 karakter'),
+  body('role').optional().isIn(['petani', 'umkm', 'buyer', 'admin'])
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        success: false, 
+        errors: errors.array() 
+      });
+    }
+
+    const { name, email, password, role, desa, phone, address } = req.body;
+
+    // Check if user exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email sudah terdaftar'
+      });
+    }
+
+    // Create user
+    const user = await User.create({
+      name,
+      email,
+      password,
+      role: role || 'petani',
+      desa,
+      phone,
+      address
+    });
+
+    const token = generateToken(user._id);
+
+    res.status(201).json({
+      success: true,
+      message: 'Registrasi berhasil',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        desa: user.desa
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// @route   POST /api/auth/login
+// @desc    Login user
+// @access  Public
+router.post('/login', [
+  body('email').isEmail().withMessage('Email tidak valid'),
+  body('password').notEmpty().withMessage('Password wajib diisi')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        success: false, 
+        errors: errors.array() 
+      });
+    }
+
+    const { email, password } = req.body;
+
+    // Check user
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Email atau password salah'
+      });
+    }
+
+    // Check password
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Email atau password salah'
+      });
+    }
+
+    const token = generateToken(user._id);
+
+    res.json({
+      success: true,
+      message: 'Login berhasil',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        desa: user.desa
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// @route   GET /api/auth/me
+// @desc    Get current user
+// @access  Private
+router.get('/me', protect, async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      user: {
+        id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role,
+        desa: req.user.desa,
+        phone: req.user.phone,
+        address: req.user.address
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+module.exports = router;
+
+// -------------------- routes/products.js --------------------
+const express = require('express');
+const Router = express.Router();
+const { body, validationResult } = require('express-validator');
+const Product = require('../models/Product');
+const { protect } = require('../middleware/auth');
+const upload = require('../middleware/upload');
+
+// @route   GET /api/products
+// @desc    Get all products
+// @access  Public
+router.get('/', async (req, res) => {
+  try {
+    const { category, desa, search, page = 1, limit = 10 } = req.query;
+    
+    let query = { isActive: true };
+    
+    if (category) query.category = category;
+    if (desa) query.desa = new RegExp(desa, 'i');
+    if (search) {
+      query.$or = [
+        { name: new RegExp(search, 'i') },
+        { description: new RegExp(search, 'i') }
+      ];
+    }
+
+    const products = await Product.find(query)
+      .populate('owner', 'name desa')
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const count = await Product.countDocuments(query);
+
+    res.json({
+      success: true,
+      count: products.length,
+      total: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page,
+      products
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// @route   GET /api/products/:id
+// @desc    Get single product
+// @access  Public
+router.get('/:id', async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id)
+      .populate('owner', 'name email desa phone');
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Produk tidak ditemukan'
+      });
+    }
+
+    res.json({
+      success: true,
+      product
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// @route   POST /api/products
+// @desc    Create new product
+// @access  Private
+router.post('/', protect, upload.array('images', 5), [
+  body('name').notEmpty().withMessage('Nama produk wajib diisi'),
+  body('description').notEmpty().withMessage('Deskripsi wajib diisi'),
+  body('category').isIn(['pertanian', 'peternakan', 'perikanan', 'umkm', 'kerajinan']),
+  body('price').isNumeric().withMessage('Harga harus berupa angka'),
+  body('unit').isIn(['kg', 'ton', 'butir', 'pack', 'liter', 'pcs']),
+  body('stock').isNumeric().withMessage('Stok harus berupa angka'),
+  body('desa').notEmpty().withMessage('Nama desa wajib diisi'),
+  body('location').notEmpty().withMessage('Lokasi wajib diisi')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        success: false, 
+        errors: errors.array() 
+      });
+    }
+
+    const images = req.files ? req.files.map(file => `/uploads/${file.filename}`) : [];
+
+    const product = await Product.create({
+      ...req.body,
+      images,
+      owner: req.user._id
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Produk berhasil ditambahkan',
+      product
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// @route   PUT /api/products/:id
+// @desc    Update product
+// @access  Private (owner only)
+router.put('/:id', protect, upload.array('images', 5), async (req, res) => {
+  try {
+    let product = await Product.findById(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Produk tidak ditemukan'
+      });
+    }
+
+    // Check ownership
+    if (product.owner.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Anda tidak memiliki akses untuk mengedit produk ini'
+      });
+    }
+
+    const images = req.files && req.files.length > 0
+      ? req.files.map(file => `/uploads/${file.filename}`)
+      : product.images;
+
+    product = await Product.findByIdAndUpdate(
+      req.params.id,
+      { ...req.body, images },
+      { new: true, runValidators: true }
+    );
+
+    res.json({
+      success: true,
+      message: 'Produk berhasil diupdate',
+      product
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// @route   DELETE /api/products/:id
+// @desc    Delete product
+// @access  Private (owner only)
+router.delete('/:id', protect, async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Produk tidak ditemukan'
+      });
+    }
+
+    // Check ownership
+    if (product.owner.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Anda tidak memiliki akses untuk menghapus produk ini'
+      });
+    }
+
+    await Product.findByIdAndDelete(req.params.id);
+
+    res.json({
+      success: true,
+      message: 'Produk berhasil dihapus'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// @route   GET /api/products/user/my-products
+// @desc    Get current user's products
+// @access  Private
+router.get('/user/my-products', protect, async (req, res) => {
+  try {
+    const products = await Product.find({ owner: req.user._id })
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      count: products.length,
+      products
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+module.exports = router;
